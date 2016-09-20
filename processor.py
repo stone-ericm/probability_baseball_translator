@@ -5,14 +5,28 @@ import os
 from collections import Counter
 
 
+with open('error.txt', 'w') as f:
+    f.close()
+
+with open('log', 'w') as f:
+    f.close()
+
 prog = re.compile('^(\d|HR|K|NP|S|D|T|IW|W|E|SB|C|FC|OA|PO|POCS|FLE|BK|PC|WP|HP|CS|DI|PB)')
 
 library = {}
 
-def report_error(filename, play):
+def report_error(filename, play, discription):
     with open('error.txt', 'a') as error:
+        error.write(discription+'\n')
         error.write(filename+'\n')
         error.write(play+'\n')
+
+def log(game_sit, two = '', three = ''):
+    one = [game_sit['inning'], game_sit['team'], game_sit['outs'], game_sit['1st'], game_sit['2nd'], game_sit['3rd'], game_sit['net_score']]
+    with open('log', 'a') as log:
+        log.write(str(one)+'\n')
+        log.write(two+'\n')
+        log.write(three+'\n')
 
 def base_check(play):
     if '.' in play:
@@ -125,8 +139,9 @@ def event_check(play):
     # if play == '4(1)3/GDP':
     #     print(play + '******************')
     # if game_sit['inning'] == 6:
-    print(game_sit)
-    print(play)
+    log(game_sit, play, date)
+    # print(game_sit)
+    # print(play)
     if prog.search(play):
         #EVENT TYPES
         
@@ -146,7 +161,8 @@ def event_check(play):
         elif play[0:2] in ['HP', 'IW'] or play[0] in ['W', 'E']:
             base_check(play)
             # print(play, game_sit)
-            game_sit['1st'] = True
+            if 'B-' not in play:
+                game_sit['1st'] = True
             #print(game_sit)
         
         #Strikeout
@@ -166,7 +182,7 @@ def event_check(play):
                             game_sit['2nd'] = False
                         elif play[4] == 'H':
                             game_sit['3rd'] = False
-                        game_sit['outs'] += 1
+                        game_sit['outs'] += 2
                         base_check(play)
                     elif play[2:4] in ['SB']:
                         if 'SB2' in play:
@@ -175,14 +191,21 @@ def event_check(play):
                             play = play + '.2-3'
                         if 'SBH' in play:
                             play = play + '.3-H'
+                        game_sit['outs'] += 1
                         # print(play + '**************')
                         base_check(play)
                 else:
-                    game_sit['outs'] += 1
+                    if 'BX1' not in play:
+                        game_sit['outs'] += 1
+                    if 'E' in play and 'X' in play:
+                        play = play.replace('X', '-')
                     base_check(play)
             # else:
             except IndexError:
-                game_sit['outs'] += 1
+                if 'BX1' not in play:
+                    game_sit['outs'] += 1
+                if 'E' in play and 'X' in play:
+                    play.replace('X', '-')
                 base_check(play)
         
         #Caught Stealing
@@ -194,7 +217,8 @@ def event_check(play):
                 game_sit['2nd'] = False
             elif play[2] == 'H':
                 game_sit['3rd'] = False
-            game_sit['outs'] += 1
+            if 'E' not in play:
+                game_sit['outs'] += 1
             base_check(play)
         
         #Foul Error
@@ -203,11 +227,11 @@ def event_check(play):
         
         elif play[0:2] == 'PO':
             if play[2:4] == "CS":
-                if play[4] == '1':
+                if play[4] == '2':
                     game_sit['1st'] = False
-                elif play[4] == '2':
-                    game_sit['2nd'] = False
                 elif play[4] == '3':
+                    game_sit['2nd'] = False
+                elif play[4] == '4':
                     game_sit['3rd'] = False
             else:
                 if play[2] == '1':
@@ -216,7 +240,8 @@ def event_check(play):
                     game_sit['2nd'] = False
                 elif play[2] == '3':
                     game_sit['3rd'] = False
-            game_sit['outs'] += 1
+            if 'E' not in play:
+                game_sit['outs'] += 1
             base_check(play)
         
         elif play[0:2] == 'FC':
@@ -252,28 +277,35 @@ def event_check(play):
             game_sit['outs'] = 3
             
         elif play[0] == 'D':
-            if 'B-' not in play:
+            if 'B-' not in play and 'BX' not in play:
                 play = play + '.B-2'
             base_check(play)
         
         elif play[0] == 'T':
-            if 'B-' not in play:
+            if 'B-' not in play and 'BX' not in play:
                 play = play + '.B-3'
             base_check(play)
         
         elif play[0].isdigit():
-            game_sit['outs'] += 1
-            # if '.' in play:
+            if 'E' not in play or 'UREV' in play or 'MREV' in play:
+                game_sit['outs'] += 1
+            elif '.' in play and play.index('E') > play.index('.'):
+                game_sit['outs'] += 1
+            else:
+                if 'B-' not in play:
+                    play = play + '.B-1'
+                # if '.' in play:
             base_check(play)
             #print(game_sit)
 
-        # else:
-        #     report_error(filename, play)
+        else:
+            report_error(filename, play, 'play not found')
     else:
-        report_error(filename, play)
+        report_error(filename, play, 'regex failed')
 
-for filename in os.listdir('evx'): 
+for filename in os.listdir('evx'):
     with open('evx/' + filename) as csvfile:
+    # with open('test.txt') as csvfile:
         print(filename)
         reader = csv.reader(csvfile)
         for row in reader:
@@ -282,13 +314,15 @@ for filename in os.listdir('evx'):
                 # for each in int_library
                 # exit()
                 try:
+                    prev_date = date
+                    date = row[2]
                     if game_sit.get('inning'):
                         # print(game_sit)
                         # print(int_library)
-                        if int_library[-1][-1] > 0:
-                            winner = int_library[-1][1]
+                        if game_sit['net_score'] > 0:
+                            winner = game_sit['team']
                         else:
-                            winner = -int_library[-1][1]
+                            winner = -game_sit['team'] + 1
                         for index, each in enumerate(int_library):
                             # print(index, each)
                             if each[1] == winner:
@@ -296,11 +330,14 @@ for filename in os.listdir('evx'):
                             else:
                                 int_library[index].append(0)
                             int_library[index] = tuple(int_library[index])
+                            # if prev_date == '2012/04/07':
+                                # report_error(str(int_library[index]), '', '')
                         foo = dict(Counter(int_library))
                         # print(foo)
                         for key, value in foo.items():
                             if value > 1:
-                                print(key)
+                                report_error(filename, '', '')
+                                report_error(prev_date, str(key), 'repeated game_sit')
                                 # pass
                         for key, value in foo.items():
                             if key in library:
@@ -309,7 +346,7 @@ for filename in os.listdir('evx'):
                                 library[key] = value
                         # print(library)
                         # exit()
-                    print(row[2])
+                    # print(date)
                     game_sit = {
                         'inning': 1,
                         'team': 0,
@@ -322,6 +359,7 @@ for filename in os.listdir('evx'):
                     }
                     int_library = [[game_sit['inning'], game_sit['team'], game_sit['outs'], game_sit['1st'], game_sit['2nd'], game_sit['3rd'], game_sit['net_score']]]
                 except NameError:
+                    date = row[2]
                     game_sit = {
                         'inning': 1,
                         'team': 0,
@@ -333,7 +371,7 @@ for filename in os.listdir('evx'):
                         'net_score': 0
                     }
                     int_library = [[game_sit['inning'], game_sit['team'], game_sit['outs'], game_sit['1st'], game_sit['2nd'], game_sit['3rd'], game_sit['net_score']]]
-            if row[0] == "play" and row[6] != 'NP':
+            if row[0] == "play" and row[6][0:2] != 'NP' and row[6][0:3] != 'FLE':
                 play = row[6]
                 # print(play)
                 event_check(play)
@@ -356,8 +394,11 @@ for filename in os.listdir('evx'):
                 int_library.append(situation_list)
                 # int_library[situation_list] = 1
     
-    print(library)            
-    exit()
+    # print(library)   
+    if os.stat("error.txt").st_size == 0:
+        with open('log', 'w') as f:
+            f.close()
+    input()
                     # print('yeah')
                 # else:
 
